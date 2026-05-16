@@ -69,18 +69,18 @@ int main(int argc, char **argv) {
 
     std::string mode = "live";
     std::string db_file = "session.db";
+    bool use_tui = true;
 
-    if (argc >= 2) {
-        std::string arg1 = argv[1];
-        if (arg1 == "record") {
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--no-tui") {
+            use_tui = false;
+        } else if (arg == "record") {
             mode = "record";
-            if (argc >= 3) db_file = argv[2];
-        } else if (arg1 == "replay") {
+            if (i + 1 < argc) db_file = argv[++i];
+        } else if (arg == "replay") {
             mode = "replay";
-            if (argc >= 3) db_file = argv[2];
-        } else {
-            std::cerr << "Usage: rift [record|replay] [session.db]\n";
-            return 1;
+            if (i + 1 < argc) db_file = argv[++i];
         }
     }
 
@@ -89,8 +89,16 @@ int main(int argc, char **argv) {
 
     if (mode == "replay") {
         spdlog::info("Starting replay mode with DB: {}", db_file);
-        Replay replay(db_file, graph, dashboard);
-        replay.run();
+        if (use_tui) {
+            Replay replay(db_file, graph, dashboard);
+            replay.run();
+        } else {
+            Storage storage(db_file);
+            auto events = storage.load_events();
+            for (const auto& e : events) {
+                std::cout << "Replay Event: " << e.filename << " (PID: " << e.pid << ")\n";
+            }
+        }
         return 0;
     }
 
@@ -152,8 +160,14 @@ int main(int argc, char **argv) {
         }
     });
 
-    // Run TUI loop on main thread (blocks until UI exits)
-    dashboard.run();
+    if (use_tui) {
+        dashboard.run();
+    } else {
+        spdlog::info("Running in headless mode. Press Ctrl+C to stop.");
+        while (!exiting) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    }
 
     // Signal thread to exit
     exiting = true;

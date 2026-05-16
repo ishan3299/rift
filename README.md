@@ -32,9 +32,21 @@ make -j$(nproc)
 ```
 
 ## Usage
-Run Rift as root to start telemetry collection:
+Run Rift as root to start telemetry collection. By default, it launches an interactive TUI.
+
 ```bash
+# Live monitoring (TUI)
 sudo ./rift
+
+# Record a session to a database (TUI)
+sudo ./rift record session.db
+
+# Replay a captured session (TUI)
+./rift replay session.db
+
+# Headless mode (for automation/verification)
+sudo ./rift --no-tui record session.db
+./rift --no-tui replay session.db
 ```
 
 ## Roadmap
