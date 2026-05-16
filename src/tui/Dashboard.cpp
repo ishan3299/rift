@@ -1,6 +1,9 @@
 #include "Dashboard.hpp"
 #include <thread>
 #include <chrono>
+#include <ftxui/component/component.hpp>
+#include <ftxui/component/screen_interactive.hpp>
+#include <ftxui/dom/elements.hpp>
 
 using namespace ftxui;
 
@@ -28,10 +31,48 @@ void Dashboard::stop() {
 }
 
 void Dashboard::run() {
-    auto renderer = Renderer([&]() -> Element {
+    int selected_process = 0;
+    std::vector<std::string> process_entries;
+    std::vector<uint32_t> process_pids;
+
+    auto menu = Menu(&process_entries, &selected_process);
+
+    auto renderer = Renderer(menu, [&]() -> Element {
+        // Update data
+        auto list = graph_.get_process_list();
+        process_entries.clear();
+        process_pids.clear();
+        for (const auto& p : list) {
+            process_entries.push_back(std::to_string(p.first) + " - " + p.second);
+            process_pids.push_back(p.first);
+        }
+
+        // Tree view (Left)
         std::string tree_text = graph_.dump_text();
         auto tree_win = window(text(" Process Tree "), text(tree_text) | yflex);
         
+        // Process Selector (Center-Left)
+        auto selector_win = window(text(" Select Process (↑/↓) "), menu->Render() | vscroll_indicator | frame | yflex);
+
+        // Details (Center-Right)
+        Element details_content = text("Select a process to view details...");
+        if (selected_process >= 0 && selected_process < (int)process_pids.size()) {
+            auto details = graph_.get_node_details(process_pids[selected_process]);
+            if (!details.empty()) {
+                Elements lines;
+                for (auto it = details.begin(); it != details.end(); ++it) {
+                    if (it.key() == "children") continue;
+                    lines.push_back(hbox({
+                        text(it.key() + ": ") | bold | color(Color::Cyan),
+                        text(it.value().dump())
+                    }));
+                }
+                details_content = vbox(std::move(lines));
+            }
+        }
+        auto details_win = window(text(" Task Details "), details_content | yflex);
+
+        // Telemetry (Right)
         Elements log_elements;
         {
             std::lock_guard<std::mutex> lock(mu_);
@@ -39,8 +80,9 @@ void Dashboard::run() {
                 log_elements.push_back(text(l));
             }
         }
-        auto logs_win = window(text(" Live Telemetry "), vbox(std::move(log_elements)) | yflex);
+        auto logs_win = window(text(" Live Telemetry "), vbox(std::move(log_elements)) | vscroll_indicator | frame | yflex);
         
+        // Alerts (Bottom)
         Elements alert_elements;
         {
             std::lock_guard<std::mutex> lock(mu_);
@@ -55,20 +97,30 @@ void Dashboard::run() {
                 }
             }
         }
-        auto threats_win = window(text(" Threat Intelligence "), vbox(std::move(alert_elements)) | yflex);
-        
-        auto args_win = window(text(" Decoded Arguments "), text("Select an event to view arguments...")) | size(HEIGHT, EQUAL, 5);
+        auto threats_win = window(text(" Threat Intelligence "), vbox(std::move(alert_elements)) | frame | yflex) | size(HEIGHT, EQUAL, 8);
 
         auto main_layout = vbox({
             hbox({
                 tree_win | flex,
-                logs_win | flex,
-                threats_win | flex
+                selector_win | size(WIDTH, EQUAL, 30),
+                details_win | flex,
+                logs_win | flex
             }) | flex,
-            args_win
+            threats_win,
+            hbox({
+                text(" [q] Quit | [↑/↓] Select Process | [Tab] Switch Focus ")
+            })
         });
 
         return main_layout;
+    });
+
+    auto component = CatchEvent(renderer, [&](Event event) {
+        if (event == Event::Character('q') || event == Event::Escape) {
+            screen_.ExitLoopClosure()();
+            return true;
+        }
+        return false;
     });
 
     // Refresh thread
@@ -79,7 +131,7 @@ void Dashboard::run() {
         }
     });
 
-    screen_.Loop(renderer);
+    screen_.Loop(component);
     running_ = false;
     if (refresh_thread.joinable()) {
         refresh_thread.join();

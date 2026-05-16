@@ -62,3 +62,24 @@ std::string Graph::dump_text() const {
     }
     return oss.str();
 }
+
+std::vector<std::pair<uint32_t, std::string>> Graph::get_process_list() const {
+    std::lock_guard<std::mutex> lock(mu_);
+    std::vector<std::pair<uint32_t, std::string>> list;
+    for (const auto& [pid, node] : process_map_) {
+        list.push_back({pid, node->name});
+    }
+    return list;
+}
+
+nlohmann::json Graph::get_node_details(uint32_t pid) const {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (process_map_.find(pid) != process_map_.end()) {
+        auto node = process_map_.at(pid);
+        nlohmann::json j = node->to_json();
+        j["uts_ns"] = node->uts_ns;
+        j["net_ns"] = node->net_ns;
+        return j;
+    }
+    return {};
+}
