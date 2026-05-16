@@ -22,7 +22,7 @@ std::vector<Alert> DetectionEngine::process_event(uint32_t type, uint32_t pid, u
         }
         
         // Rule: Suspicious Binary Execution
-        if (filename.find("ncat") != std::string::npos || filename.find("nc ") != std::string::npos) {
+        if (filename.find("ncat") != std::string::npos || filename.find("/nc") != std::string::npos) {
              alerts.push_back({
                 "SUSPICIOUS_TOOL",
                 "MEDIUM",
