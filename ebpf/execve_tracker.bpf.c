@@ -7,7 +7,10 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 typedef enum {
     EVENT_EXECVE,
     EVENT_CONNECT,
-    EVENT_DUP2
+    EVENT_DUP2,
+    EVENT_MMAP,
+    EVENT_MPROTECT,
+    EVENT_PTRACE
 } event_type_t;
 
 struct event_t {
@@ -28,6 +31,14 @@ struct event_t {
     u32 mnt_ns;
     u32 pid_ns;
     u32 net_ns;
+
+    // Memory events
+    u64 mem_addr;
+    u64 mem_len;
+    u32 mem_prot;
+    u32 mem_flags;
+    u32 ptrace_request;
+    u32 target_pid;
 };
 
 struct {
@@ -49,7 +60,6 @@ static __always_inline struct event_t* reserve_event(u32 type) {
     e->ppid = BPF_CORE_READ(task, real_parent, tgid);
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
     
-    // Capture Namespace IDs
     struct nsproxy *ns = BPF_CORE_READ(task, nsproxy);
     if (ns) {
         e->uts_ns = BPF_CORE_READ(ns, uts_ns, ns.inum);
@@ -66,10 +76,8 @@ int handle_execve(struct trace_event_raw_sys_enter *ctx)
 {
     struct event_t *e = reserve_event(EVENT_EXECVE);
     if (!e) return 0;
-
     const char *filename_ptr = (const char *)ctx->args[0];
     bpf_probe_read_user_str(&e->filename, sizeof(e->filename), filename_ptr);
-
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
@@ -79,17 +87,13 @@ int handle_connect(struct trace_event_raw_sys_enter *ctx)
 {
     struct event_t *e = reserve_event(EVENT_CONNECT);
     if (!e) return 0;
-
     struct sockaddr_in *addr = (struct sockaddr_in *)ctx->args[1];
     u16 port;
     u32 ip;
-    
     bpf_probe_read_user(&port, sizeof(port), &addr->sin_port);
     bpf_probe_read_user(&ip, sizeof(ip), &addr->sin_addr.s_addr);
-    
     e->remote_ip = ip;
     e->remote_port = port;
-
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
@@ -99,10 +103,53 @@ int handle_dup2(struct trace_event_raw_sys_enter *ctx)
 {
     struct event_t *e = reserve_event(EVENT_DUP2);
     if (!e) return 0;
-
     e->oldfd = (u32)ctx->args[0];
     e->fd = (u32)ctx->args[1];
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
 
+SEC("tracepoint/syscalls/sys_enter_mmap")
+int handle_mmap(struct trace_event_raw_sys_enter *ctx)
+{
+    u32 prot = (u32)ctx->args[2];
+    // Only capture suspicious mmaps (RWX)
+    if (!((prot & 0x1) && (prot & 0x2) && (prot & 0x4))) // PROT_READ | PROT_WRITE | PROT_EXEC
+        return 0;
+
+    struct event_t *e = reserve_event(EVENT_MMAP);
+    if (!e) return 0;
+    e->mem_addr = (u64)ctx->args[0];
+    e->mem_len = (u64)ctx->args[1];
+    e->mem_prot = prot;
+    e->mem_flags = (u32)ctx->args[3];
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_mprotect")
+int handle_mprotect(struct trace_event_raw_sys_enter *ctx)
+{
+    u32 prot = (u32)ctx->args[2];
+    if (!((prot & 0x1) && (prot & 0x2) && (prot & 0x4)))
+        return 0;
+
+    struct event_t *e = reserve_event(EVENT_MPROTECT);
+    if (!e) return 0;
+    e->mem_addr = (u64)ctx->args[0];
+    e->mem_len = (u64)ctx->args[1];
+    e->mem_prot = prot;
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_ptrace")
+int handle_ptrace(struct trace_event_raw_sys_enter *ctx)
+{
+    struct event_t *e = reserve_event(EVENT_PTRACE);
+    if (!e) return 0;
+    e->ptrace_request = (u32)ctx->args[0];
+    e->target_pid = (u32)ctx->args[1];
     bpf_ringbuf_submit(e, 0);
     return 0;
 }

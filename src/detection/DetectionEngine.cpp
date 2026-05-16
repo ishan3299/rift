@@ -31,6 +31,22 @@ std::vector<Alert> DetectionEngine::process_event(uint32_t type, uint32_t pid, u
                 now
             });
         }
+    } else if (type == 3 || type == 4) { // MMAP or MPROTECT
+        alerts.push_back({
+            "RWX_MEMORY",
+            "HIGH",
+            "Suspicious RWX memory allocation detected",
+            pid,
+            now
+        });
+    } else if (type == 5) { // PTRACE
+        alerts.push_back({
+            "PTRACE_ATTACH",
+            "MEDIUM",
+            "Process attempting to ptrace another process (possible injection)",
+            pid,
+            now
+        });
     }
 
     return alerts;

@@ -46,6 +46,14 @@ struct event_t {
     uint32_t mnt_ns;
     uint32_t pid_ns;
     uint32_t net_ns;
+
+    // Memory events
+    uint64_t mem_addr;
+    uint64_t mem_len;
+    uint32_t mem_prot;
+    uint32_t mem_flags;
+    uint32_t ptrace_request;
+    uint32_t target_pid;
 };
 
 static int handle_event(void *ctx, void *data, size_t data_sz) {
@@ -56,7 +64,6 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
     std::string filename(e->filename);
 
     if (e->type == 0) { // EVENT_EXECVE
-        // Add to graph engine
         app_ctx->graph->add_process(e->pid, e->ppid, filename, e->ts, e->uts_ns, e->net_ns);
     } else if (e->type == 1) { // EVENT_CONNECT
         app_ctx->detection->register_connect(e->pid);
@@ -83,10 +90,18 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
     j["ppid"] = e->ppid;
     j["uid"] = e->uid;
     j["comm"] = comm;
+    
     if (e->type == 0) {
         j["filename"] = filename;
         j["uts_ns"] = e->uts_ns;
         j["net_ns"] = e->net_ns;
+    } else if (e->type == 3 || e->type == 4) {
+        j["mem_addr"] = e->mem_addr;
+        j["mem_len"] = e->mem_len;
+        j["mem_prot"] = e->mem_prot;
+    } else if (e->type == 5) {
+        j["ptrace_request"] = e->ptrace_request;
+        j["target_pid"] = e->target_pid;
     }
     
     app_ctx->dashboard->add_log(j.dump());
