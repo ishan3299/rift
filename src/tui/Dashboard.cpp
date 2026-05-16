@@ -16,6 +16,12 @@ void Dashboard::add_log(const std::string& log) {
     screen_.PostEvent(Event::Custom);
 }
 
+void Dashboard::add_alert(const std::string& rule, const std::string& desc) {
+    std::lock_guard<std::mutex> lock(mu_);
+    alerts_.push_back({rule, desc});
+    screen_.PostEvent(Event::Custom);
+}
+
 void Dashboard::stop() {
     running_ = false;
     screen_.ExitLoopClosure()();
@@ -35,7 +41,21 @@ void Dashboard::run() {
         }
         auto logs_win = window(text(" Live Telemetry "), vbox(std::move(log_elements)) | yflex);
         
-        auto threats_win = window(text(" Threat Intelligence "), text("No active threats detected.") | center | color(Color::Green));
+        Elements alert_elements;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            if (alerts_.empty()) {
+                alert_elements.push_back(text("No active threats detected.") | center | color(Color::Green));
+            } else {
+                for (const auto& a : alerts_) {
+                    alert_elements.push_back(hbox({
+                        text("[" + a.first + "] ") | bold | color(Color::Red),
+                        text(a.second)
+                    }));
+                }
+            }
+        }
+        auto threats_win = window(text(" Threat Intelligence "), vbox(std::move(alert_elements)) | yflex);
         
         auto args_win = window(text(" Decoded Arguments "), text("Select an event to view arguments...")) | size(HEIGHT, EQUAL, 5);
 

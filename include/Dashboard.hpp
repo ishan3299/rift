@@ -12,11 +12,13 @@ public:
     Dashboard(Graph& graph);
     void run();
     void add_log(const std::string& log);
+    void add_alert(const std::string& rule, const std::string& desc);
     void stop();
 
 private:
     Graph& graph_;
     std::vector<std::string> logs_;
+    std::vector<std::pair<std::string, std::string>> alerts_;
     std::mutex mu_;
     ftxui::ScreenInteractive screen_;
     bool running_;
