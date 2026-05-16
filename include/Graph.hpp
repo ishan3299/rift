@@ -1,0 +1,25 @@
+#pragma once
+#include "Node.hpp"
+#include <mutex>
+
+class Graph {
+public:
+    Graph() = default;
+    
+    // Thread-safe process node addition
+    void add_process(uint32_t pid, uint32_t ppid, const std::string& comm, uint64_t ts);
+    
+    // Dump the current tree state as JSON
+    nlohmann::json dump_tree() const;
+    
+    // Dump text tree
+    std::string dump_text() const;
+
+private:
+    std::string print_node(const std::shared_ptr<Node>& node, const std::string& prefix, bool is_last) const;
+
+    mutable std::mutex mu_;
+    std::unordered_map<uint32_t, std::shared_ptr<Node>> process_map_;
+    std::vector<std::shared_ptr<Node>> roots_;
+    uint64_t next_id_ = 1;
+};

@@ -1,14 +1,22 @@
 #include <iostream>
 #include <csignal>
+#include <thread>
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
 #include "execve_tracker.skel.h"
+#include "Graph.hpp"
+#include "Dashboard.hpp"
 
 using json = nlohmann::json;
 
 static volatile bool exiting = false;
+
+struct AppContext {
+    Graph* graph;
+    Dashboard* dashboard;
+};
 
 void sig_handler(int sig) {
     exiting = true;
@@ -26,7 +34,11 @@ struct event_t {
 
 static int handle_event(void *ctx, void *data, size_t data_sz) {
     const struct event_t *e = static_cast<const struct event_t*>(data);
+    AppContext* app_ctx = static_cast<AppContext*>(ctx);
     
+    // Add to graph engine
+    app_ctx->graph->add_process(e->pid, e->ppid, std::string(e->filename), e->ts);
+
     json j;
     j["timestamp"] = e->ts;
     j["pid"] = e->pid;
@@ -35,7 +47,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
     j["comm"] = std::string(e->comm);
     j["filename"] = std::string(e->filename);
     
-    spdlog::info("{}", j.dump());
+    app_ctx->dashboard->add_log(j.dump());
     
     return 0;
 }
@@ -64,7 +76,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    struct ring_buffer *rb = ring_buffer__new(bpf_map__fd(skel->maps.rb), handle_event, NULL, NULL);
+    Graph graph;
+    Dashboard dashboard(graph);
+    AppContext app_ctx = { &graph, &dashboard };
+
+    struct ring_buffer *rb = ring_buffer__new(bpf_map__fd(skel->maps.rb), handle_event, &app_ctx, NULL);
     if (!rb) {
         spdlog::error("Failed to create ring buffer");
         execve_tracker_bpf::destroy(skel);
@@ -76,21 +92,32 @@ int main(int argc, char **argv) {
 
     spdlog::info("Listening for execve events...");
     
-    while (!exiting) {
-        err = ring_buffer__poll(rb, 100); /* timeout, ms */
-        if (err == -EINTR) {
-            err = 0;
-            break;
+    // Start eBPF polling thread
+    std::thread ebpf_thread([&]() {
+        while (!exiting) {
+            int err = ring_buffer__poll(rb, 100); /* timeout, ms */
+            if (err == -EINTR) {
+                break;
+            }
+            if (err < 0) {
+                spdlog::error("Error polling ring buffer: {}", err);
+                break;
+            }
         }
-        if (err < 0) {
-            spdlog::error("Error polling ring buffer: {}", err);
-            break;
-        }
+    });
+
+    // Run TUI loop on main thread (blocks until UI exits)
+    dashboard.run();
+
+    // Signal thread to exit
+    exiting = true;
+    
+    if (ebpf_thread.joinable()) {
+        ebpf_thread.join();
     }
 
     ring_buffer__free(rb);
     execve_tracker_bpf::destroy(skel);
     
-    spdlog::info("Rift exiting cleanly.");
     return 0;
 }
