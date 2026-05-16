@@ -39,10 +39,10 @@ sudo ./rift
 
 ## Roadmap
 - [x] **Phase 1:** Telemetry Foundation (eBPF, JSON output, structured logs)
-- [ ] **Phase 2:** Graph Engine (Process relationship tracking, ancestry graphing)
-- [ ] **Phase 3:** Real-time TUI (Interactive terminal UI for threat monitoring)
+- [x] **Phase 2:** Graph Engine (Process relationship tracking, ancestry graphing)
+- [x] **Phase 3:** Real-time TUI (Interactive terminal UI for threat monitoring)
 - [ ] **Phase 4:** Detection Engine (Behavioral correlation, attack signatures)
-- [ ] **Phase 5:** Storage & Replay (SQLite persistence, session recording)
+- [x] **Phase 5:** Storage & Replay (SQLite persistence, session recording)
 - [ ] **Phase 6:** Container Awareness (Docker/K8s correlation)
 - [ ] **Phase 7:** Advanced Memory Detection (RWX, unbacked execution)
 
