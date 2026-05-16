@@ -56,7 +56,7 @@ sudo ./rift --no-tui record session.db
 - [x] **Phase 4:** Detection Engine (Behavioral correlation, attack signatures)
 - [x] **Phase 5:** Storage & Replay (SQLite persistence, session recording)
 - [x] **Phase 6:** Container Awareness (Docker/K8s correlation)
-- [ ] **Phase 7:** Advanced Memory Detection (RWX, unbacked execution)
+- [x] **Phase 7:** Advanced Memory Detection (RWX, unbacked execution)
 
 ## License
 MIT License
