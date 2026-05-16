@@ -46,8 +46,15 @@ file(GLOB_RECURSE SRC_FILES
     "src/*.cpp"
 )
 
+# Main executable
 add_executable(rift ${SRC_FILES})
 add_dependencies(rift ebpf_skel)
+
+# Logic Test
+add_executable(test_tui_logic tests/test_tui_logic.cpp src/graph/Graph.cpp)
+add_dependencies(test_tui_logic ebpf_skel)
+target_include_directories(test_tui_logic PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR})
+target_link_libraries(test_tui_logic PRIVATE nlohmann_json::nlohmann_json)
 
 target_include_directories(rift PUBLIC 
     ${CMAKE_SOURCE_DIR}/include 
