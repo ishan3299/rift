@@ -1,10 +1,15 @@
 #include "Graph.hpp"
+#include "ContainerUtils.hpp"
 #include <sstream>
 
-void Graph::add_process(uint32_t pid, uint32_t ppid, const std::string& comm, uint64_t ts) {
+void Graph::add_process(uint32_t pid, uint32_t ppid, const std::string& comm, uint64_t ts, uint32_t uts_ns, uint32_t net_ns) {
     std::lock_guard<std::mutex> lock(mu_);
     
     auto node = std::make_shared<Node>(next_id_++, NodeType::PROCESS, comm, pid, ppid, ts);
+    node->uts_ns = uts_ns;
+    node->net_ns = net_ns;
+    node->container_id = ContainerUtils::get_container_id(pid);
+
     process_map_[pid] = node;
 
     // Ancestry Linking
@@ -33,7 +38,11 @@ std::string Graph::print_node(const std::shared_ptr<Node>& node, const std::stri
         oss << "├── ";
     }
     
-    oss << node->name << " (" << node->pid << ")\n";
+    oss << node->name << " (" << node->pid << ")";
+    if (!node->container_id.empty()) {
+        oss << " [CID: " << node->container_id << "]";
+    }
+    oss << "\n";
     
     std::string child_prefix = prefix + (is_last ? "    " : "│   ");
     for (size_t i = 0; i < node->children.size(); ++i) {

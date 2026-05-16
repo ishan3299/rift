@@ -7,7 +7,7 @@ public:
     Graph() = default;
     
     // Thread-safe process node addition
-    void add_process(uint32_t pid, uint32_t ppid, const std::string& comm, uint64_t ts);
+    void add_process(uint32_t pid, uint32_t ppid, const std::string& comm, uint64_t ts, uint32_t uts_ns = 0, uint32_t net_ns = 0);
     
     // Dump the current tree state as JSON
     nlohmann::json dump_tree() const;

@@ -40,6 +40,12 @@ struct event_t {
     uint32_t oldfd;
     uint32_t remote_ip;
     uint16_t remote_port;
+    
+    // Namespace IDs
+    uint32_t uts_ns;
+    uint32_t mnt_ns;
+    uint32_t pid_ns;
+    uint32_t net_ns;
 };
 
 static int handle_event(void *ctx, void *data, size_t data_sz) {
@@ -51,7 +57,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
 
     if (e->type == 0) { // EVENT_EXECVE
         // Add to graph engine
-        app_ctx->graph->add_process(e->pid, e->ppid, filename, e->ts);
+        app_ctx->graph->add_process(e->pid, e->ppid, filename, e->ts, e->uts_ns, e->net_ns);
     } else if (e->type == 1) { // EVENT_CONNECT
         app_ctx->detection->register_connect(e->pid);
     } else if (e->type == 2) { // EVENT_DUP2
@@ -77,7 +83,11 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
     j["ppid"] = e->ppid;
     j["uid"] = e->uid;
     j["comm"] = comm;
-    if (e->type == 0) j["filename"] = filename;
+    if (e->type == 0) {
+        j["filename"] = filename;
+        j["uts_ns"] = e->uts_ns;
+        j["net_ns"] = e->net_ns;
+    }
     
     app_ctx->dashboard->add_log(j.dump());
     

@@ -18,10 +18,16 @@ struct event_t {
     char comm[16];
     char filename[256];
     u64 ts;
-    u32 fd;       // For dup2
-    u32 oldfd;    // For dup2
-    u32 remote_ip; // For connect (simplified IPv4)
+    u32 fd;
+    u32 oldfd;
+    u32 remote_ip;
     u16 remote_port;
+    
+    // Namespace IDs
+    u32 uts_ns;
+    u32 mnt_ns;
+    u32 pid_ns;
+    u32 net_ns;
 };
 
 struct {
@@ -42,6 +48,15 @@ static __always_inline struct event_t* reserve_event(u32 type) {
     struct task_struct *task = (struct task_struct *)bpf_get_current_task();
     e->ppid = BPF_CORE_READ(task, real_parent, tgid);
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
+    
+    // Capture Namespace IDs
+    struct nsproxy *ns = BPF_CORE_READ(task, nsproxy);
+    if (ns) {
+        e->uts_ns = BPF_CORE_READ(ns, uts_ns, ns.inum);
+        e->mnt_ns = BPF_CORE_READ(ns, mnt_ns, ns.inum);
+        e->pid_ns = BPF_CORE_READ(ns, pid_ns_for_children, ns.inum);
+        e->net_ns = BPF_CORE_READ(ns, net_ns, ns.inum);
+    }
     
     return e;
 }
