@@ -27,6 +27,7 @@ struct Node {
     std::string container_id;
     uint32_t uts_ns = 0;
     uint32_t net_ns = 0;
+    bool exited = false;
     
     std::vector<std::shared_ptr<Node>> children;
 
@@ -40,6 +41,7 @@ struct Node {
         j["pid"] = pid;
         j["ppid"] = ppid;
         j["timestamp"] = timestamp;
+        j["exited"] = exited;
         if (!container_id.empty()) j["container_id"] = container_id;
         if (net_ns != 0) j["net_ns"] = net_ns;
         

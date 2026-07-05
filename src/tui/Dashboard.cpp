@@ -16,12 +16,14 @@ void Dashboard::add_log(const std::string& log) {
     if (logs_.size() > 100) {
         logs_.erase(logs_.begin());
     }
+    graph_dirty_ = true;
     screen_.PostEvent(Event::Custom);
 }
 
-void Dashboard::add_alert(const std::string& rule, const std::string& desc) {
+void Dashboard::add_alert(const std::string& rule, const std::string& severity, const std::string& desc) {
     std::lock_guard<std::mutex> lock(mu_);
-    alerts_.push_back({rule, desc});
+    alerts_.push_back({rule, severity, desc});
+    graph_dirty_ = true;
     screen_.PostEvent(Event::Custom);
 }
 
@@ -38,13 +40,23 @@ void Dashboard::run() {
     auto menu = Menu(&process_entries, &selected_process);
 
     auto renderer = Renderer(menu, [&]() -> Element {
-        // Update data
-        auto list = graph_.get_process_list();
-        process_entries.clear();
-        process_pids.clear();
-        for (const auto& p : list) {
-            process_entries.push_back(std::to_string(p.first) + " - " + p.second);
-            process_pids.push_back(p.first);
+        // Update data only if dirty to save CPU time
+        bool is_dirty = false;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            if (graph_dirty_) {
+                is_dirty = true;
+                graph_dirty_ = false;
+            }
+        }
+        if (is_dirty) {
+            auto list = graph_.get_process_list();
+            process_entries.clear();
+            process_pids.clear();
+            for (const auto& p : list) {
+                process_entries.push_back(std::to_string(p.first) + " - " + p.second);
+                process_pids.push_back(p.first);
+            }
         }
 
         // Tree view (Left)
@@ -62,9 +74,10 @@ void Dashboard::run() {
                 Elements lines;
                 for (auto it = details.begin(); it != details.end(); ++it) {
                     if (it.key() == "children") continue;
+                    std::string val_str = it.value().is_string() ? it.value().get<std::string>() : it.value().dump();
                     lines.push_back(hbox({
                         text(it.key() + ": ") | bold | color(Color::Cyan),
-                        text(it.value().dump())
+                        text(val_str)
                     }));
                 }
                 details_content = vbox(std::move(lines));
@@ -90,9 +103,21 @@ void Dashboard::run() {
                 alert_elements.push_back(text("No active threats detected.") | center | color(Color::Green));
             } else {
                 for (const auto& a : alerts_) {
+                    Color sev_color = Color::White;
+                    if (a.severity == "CRITICAL") {
+                        sev_color = Color::Red;
+                    } else if (a.severity == "HIGH") {
+                        sev_color = Color::RGB(255, 102, 102);
+                    } else if (a.severity == "MEDIUM") {
+                        sev_color = Color::Yellow;
+                    } else if (a.severity == "LOW") {
+                        sev_color = Color::Cyan;
+                    }
+
                     alert_elements.push_back(hbox({
-                        text("[" + a.first + "] ") | bold | color(Color::Red),
-                        text(a.second)
+                        text("[" + a.rule + "] ") | bold | color(sev_color),
+                        text("(" + a.severity + ") ") | bold | color(sev_color),
+                        text(a.desc)
                     }));
                 }
             }

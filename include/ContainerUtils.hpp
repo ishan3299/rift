@@ -10,11 +10,11 @@ public:
         std::ifstream file(path);
         if (!file.is_open()) return "";
 
+        static const std::regex docker_regex(".*/docker/([a-f0-9]{64}).*");
+        static const std::regex k8s_regex(".*/kubepods/.*-([a-f0-9]{64}).*");
+
         std::string line;
         while (std::getline(file, line)) {
-            // Match docker or k8s container ID patterns
-            std::regex docker_regex(".*/docker/([a-f0-9]{64}).*");
-            std::regex k8s_regex(".*/kubepods/.*-([a-f0-9]{64}).*");
             std::smatch match;
 
             if (std::regex_search(line, match, docker_regex) || std::regex_search(line, match, k8s_regex)) {

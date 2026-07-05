@@ -33,9 +33,48 @@ void test_graph_selection() {
     std::cout << "[✓] Graph Engine selection logic passed!\n";
 }
 
+void test_process_exit() {
+    std::cout << "[*] Testing Graph Engine exit and pruning logic...\n";
+    Graph graph;
+
+    // Build parent-child tree: 100 -> 200 -> 300
+    graph.add_process(100, 1, "/usr/bin/parent", 1000);
+    graph.add_process(200, 100, "/usr/bin/child", 1001);
+    graph.add_process(300, 200, "/usr/bin/grandchild", 1002);
+
+    // 1. Remove parent (100)
+    // Parent exits but child is active. Parent node should remain as exited.
+    graph.remove_process(100);
+    auto details_parent = graph.get_node_details(100);
+    assert(!details_parent.empty());
+    assert(details_parent["exited"] == true);
+    std::cout << "[+] Parent marked as exited but preserved due to active descendants.\n";
+
+    // 2. Remove grandchild (300)
+    // Grandchild has no children, so it should be immediately pruned.
+    graph.remove_process(300);
+    auto details_grandchild = graph.get_node_details(300);
+    assert(details_grandchild.empty()); // Pruned!
+    std::cout << "[+] Grandchild exited and immediately pruned.\n";
+
+    // 3. Remove child (200)
+    // Child has exited, and grandchild (300) had already exited.
+    // This triggers cascading pruning: child (200) is pruned, which triggers parent (100) pruning since parent had exited too.
+    graph.remove_process(200);
+    auto details_child = graph.get_node_details(200);
+    assert(details_child.empty()); // Pruned!
+    auto details_parent_after = graph.get_node_details(100);
+    assert(details_parent_after.empty()); // Pruned!
+    std::cout << "[+] Child and parent successfully cascade-pruned.\n";
+
+    assert(graph.get_process_list().empty());
+    std::cout << "[✓] Graph Engine exit and pruning logic passed!\n";
+}
+
 int main() {
     try {
         test_graph_selection();
+        test_process_exit();
     } catch (const std::exception& e) {
         std::cerr << "[!] Test failed: " << e.what() << "\n";
         return 1;

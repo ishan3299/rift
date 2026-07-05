@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "name": "SUSPICIOUS_TOOL",
+      "severity": "LOW",
+      "match_paths": ["ncat", "/nc"],
+      "enabled": true
+    },
+    {
+      "name": "REVERSE_SHELL",
+      "severity": "CRITICAL",
+      "spawn_shells": ["/sh", "/bash"],
+      "enabled": true
+    },
+    {
+      "name": "RWX_MEMORY",
+      "severity": "HIGH",
+      "enabled": true
+    },
+    {
+      "name": "PTRACE_ATTACH",
+      "severity": "MEDIUM",
+      "enabled": true
+    }
+  ],
+  "whitelist": {
+    "pids": [1],
+    "comms": ["systemd", "ignored_comm"]
+  }
+}

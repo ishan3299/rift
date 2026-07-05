@@ -1,10 +1,28 @@
 #include "Graph.hpp"
 #include "ContainerUtils.hpp"
 #include <sstream>
+#include <algorithm>
 
 void Graph::add_process(uint32_t pid, uint32_t ppid, const std::string& comm, uint64_t ts, uint32_t uts_ns, uint32_t net_ns) {
     std::lock_guard<std::mutex> lock(mu_);
     
+    // Clean up old process with the same PID to handle PID recycling
+    auto old_it = process_map_.find(pid);
+    if (old_it != process_map_.end()) {
+        auto old_node = old_it->second;
+        uint32_t old_ppid = old_node->ppid;
+        auto parent_it = process_map_.find(old_ppid);
+        if (parent_it != process_map_.end()) {
+            auto& siblings = parent_it->second->children;
+            siblings.erase(std::remove_if(siblings.begin(), siblings.end(),
+                [pid](const std::shared_ptr<Node>& n) { return n->pid == pid; }),
+                siblings.end());
+        }
+        roots_.erase(std::remove_if(roots_.begin(), roots_.end(),
+            [pid](const std::shared_ptr<Node>& n) { return n->pid == pid; }),
+            roots_.end());
+    }
+
     auto node = std::make_shared<Node>(next_id_++, NodeType::PROCESS, comm, pid, ppid, ts);
     node->uts_ns = uts_ns;
     node->net_ns = net_ns;
@@ -39,6 +57,9 @@ std::string Graph::print_node(const std::shared_ptr<Node>& node, const std::stri
     }
     
     oss << node->name << " (" << node->pid << ")";
+    if (node->exited) {
+        oss << " [exited]";
+    }
     if (!node->container_id.empty()) {
         oss << " [CID: " << node->container_id << "]";
     }
@@ -82,4 +103,40 @@ nlohmann::json Graph::get_node_details(uint32_t pid) const {
         return j;
     }
     return {};
+}
+
+void Graph::remove_process(uint32_t pid) {
+    std::lock_guard<std::mutex> lock(mu_);
+    auto it = process_map_.find(pid);
+    if (it != process_map_.end()) {
+        it->second->exited = true;
+        prune_node(pid);
+    }
+}
+
+void Graph::prune_node(uint32_t pid) {
+    auto it = process_map_.find(pid);
+    if (it == process_map_.end()) return;
+    auto node = it->second;
+
+    if (!node->exited) return;
+    for (const auto& child : node->children) {
+        if (!child->exited) return;
+    }
+
+    process_map_.erase(pid);
+
+    uint32_t ppid = node->ppid;
+    auto parent_it = process_map_.find(ppid);
+    if (parent_it != process_map_.end()) {
+        auto& siblings = parent_it->second->children;
+        siblings.erase(std::remove_if(siblings.begin(), siblings.end(),
+            [pid](const std::shared_ptr<Node>& n) { return n->pid == pid; }),
+            siblings.end());
+        prune_node(ppid);
+    } else {
+        roots_.erase(std::remove_if(roots_.begin(), roots_.end(),
+            [pid](const std::shared_ptr<Node>& n) { return n->pid == pid; }),
+            roots_.end());
+    }
 }

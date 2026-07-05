@@ -1,6 +1,9 @@
 #include <iostream>
 #include <csignal>
 #include <thread>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 #include <spdlog/spdlog.h>
@@ -23,7 +26,7 @@ struct AppContext {
     DetectionEngine* detection;
 };
 
-void sig_handler(int sig) {
+void sig_handler(int /*sig*/) {
     exiting = true;
 }
 
@@ -56,7 +59,7 @@ struct event_t {
     uint32_t target_pid;
 };
 
-static int handle_event(void *ctx, void *data, size_t data_sz) {
+static int handle_event(void *ctx, void *data, size_t /*data_sz*/) {
     const struct event_t *e = static_cast<const struct event_t*>(data);
     AppContext* app_ctx = static_cast<AppContext*>(ctx);
     
@@ -69,13 +72,15 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
         app_ctx->detection->register_connect(e->pid);
     } else if (e->type == 2) { // EVENT_DUP2
         app_ctx->detection->register_dup2(e->pid);
+    } else if (e->type == 6) { // EVENT_EXIT
+        app_ctx->graph->remove_process(e->pid);
     }
 
     // Run detections
     auto alerts = app_ctx->detection->process_event(e->type, e->pid, e->ppid, comm, filename);
     for (const auto& alert : alerts) {
-        app_ctx->dashboard->add_alert(alert.rule_name, alert.description);
-        spdlog::warn("ALERT: [{}] {}", alert.rule_name, alert.description);
+        app_ctx->dashboard->add_alert(alert.rule_name, alert.severity, alert.description);
+        spdlog::warn("ALERT: [{}] (Severity: {}) {}", alert.rule_name, alert.severity, alert.description);
     }
 
     // Store in DB if enabled
@@ -95,6 +100,14 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
         j["filename"] = filename;
         j["uts_ns"] = e->uts_ns;
         j["net_ns"] = e->net_ns;
+    } else if (e->type == 1) {
+        struct in_addr ip_addr;
+        ip_addr.s_addr = e->remote_ip;
+        j["remote_ip"] = inet_ntoa(ip_addr);
+        j["remote_port"] = ntohs(e->remote_port);
+    } else if (e->type == 2) {
+        j["fd"] = e->fd;
+        j["oldfd"] = e->oldfd;
     } else if (e->type == 3 || e->type == 4) {
         j["mem_addr"] = e->mem_addr;
         j["mem_len"] = e->mem_len;
@@ -102,6 +115,8 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
     } else if (e->type == 5) {
         j["ptrace_request"] = e->ptrace_request;
         j["target_pid"] = e->target_pid;
+    } else if (e->type == 6) {
+        j["exited"] = true;
     }
     
     app_ctx->dashboard->add_log(j.dump());

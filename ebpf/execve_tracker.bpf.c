@@ -10,7 +10,8 @@ typedef enum {
     EVENT_DUP2,
     EVENT_MMAP,
     EVENT_MPROTECT,
-    EVENT_PTRACE
+    EVENT_PTRACE,
+    EVENT_EXIT
 } event_type_t;
 
 struct event_t {
@@ -50,6 +51,8 @@ static __always_inline struct event_t* reserve_event(u32 type) {
     struct event_t *e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0);
     if (!e) return NULL;
 
+    __builtin_memset(e, 0, sizeof(*e));
+
     e->type = type;
     e->ts = bpf_ktime_get_ns();
     u64 id = bpf_get_current_pid_tgid();
@@ -85,11 +88,19 @@ int handle_execve(struct trace_event_raw_sys_enter *ctx)
 SEC("tracepoint/syscalls/sys_enter_connect")
 int handle_connect(struct trace_event_raw_sys_enter *ctx)
 {
+    struct sockaddr_in *addr = (struct sockaddr_in *)ctx->args[1];
+    if (!addr) return 0;
+
+    short family = 0;
+    if (bpf_probe_read_user(&family, sizeof(family), &addr->sin_family) < 0)
+        return 0;
+    if (family != 2) // AF_INET = 2
+        return 0;
+
     struct event_t *e = reserve_event(EVENT_CONNECT);
     if (!e) return 0;
-    struct sockaddr_in *addr = (struct sockaddr_in *)ctx->args[1];
-    u16 port;
-    u32 ip;
+    u16 port = 0;
+    u32 ip = 0;
     bpf_probe_read_user(&port, sizeof(port), &addr->sin_port);
     bpf_probe_read_user(&ip, sizeof(ip), &addr->sin_addr.s_addr);
     e->remote_ip = ip;
@@ -150,6 +161,15 @@ int handle_ptrace(struct trace_event_raw_sys_enter *ctx)
     if (!e) return 0;
     e->ptrace_request = (u32)ctx->args[0];
     e->target_pid = (u32)ctx->args[1];
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+SEC("tracepoint/sched/sched_process_exit")
+int handle_exit(void *ctx)
+{
+    struct event_t *e = reserve_event(EVENT_EXIT);
+    if (!e) return 0;
     bpf_ringbuf_submit(e, 0);
     return 0;
 }

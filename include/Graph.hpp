@@ -9,6 +9,9 @@ public:
     // Thread-safe process node addition
     void add_process(uint32_t pid, uint32_t ppid, const std::string& comm, uint64_t ts, uint32_t uts_ns = 0, uint32_t net_ns = 0);
     
+    // Thread-safe process exit tracking
+    void remove_process(uint32_t pid);
+    
     // Dump the current tree state as JSON
     nlohmann::json dump_tree() const;
     
@@ -23,6 +26,7 @@ public:
 
 private:
     std::string print_node(const std::shared_ptr<Node>& node, const std::string& prefix, bool is_last) const;
+    void prune_node(uint32_t pid);
 
     mutable std::mutex mu_;
     std::unordered_map<uint32_t, std::shared_ptr<Node>> process_map_;

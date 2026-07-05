@@ -7,6 +7,9 @@ Storage::Storage(const std::string& db_path) : db_(nullptr), insert_stmt_(nullpt
         throw std::runtime_error("Failed to open SQLite database");
     }
 
+    // Optimize performance: use WAL and normal synchronization to prevent disk bottlenecks
+    sqlite3_exec(db_, "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr);
+
     const char* schema = R"(
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
