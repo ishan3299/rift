@@ -1,62 +1,112 @@
 # Rift - Linux Threat Graph Engine
 
-Rift is a production-grade open-source Linux Threat Graph Engine. It operates as a behavioral runtime observability and threat intelligence platform for Linux systems.
+Rift is a production-grade open-source Linux Threat Graph Engine. It operates as a behavioral runtime observability, forensics, and threat intelligence platform for Linux systems.
 
-By leveraging eBPF, Rift captures deep kernel telemetry and transforms low-level system calls into high-level behavioral intelligence, process relationships, and attack graphs.
+By leveraging eBPF, Rift captures deep kernel telemetry and transforms low-level system calls into high-level behavioral intelligence, process relationships, and attack graphs with near-zero overhead.
 
-## Features (Phase 1)
-- **eBPF-based Telemetry:** Collects `execve` events directly from the kernel using eBPF tracepoints.
-- **Structured Logging:** Emits JSON-formatted telemetry for SIEM integration and offline analysis.
-- **High Performance:** Utilizes eBPF ring buffers for high-throughput, low-overhead event processing.
-- **Modern Architecture:** Built with C++20, `libbpf`, `spdlog`, and `fmt`.
+---
 
-## Project Architecture
+## 🚀 Key Features
 
-- **Kernel Layer:** eBPF tracepoints monitor system behavior (e.g., `sys_enter_execve`).
-- **Userland Collector:** The C++ agent polls eBPF ring buffers to ingest raw telemetry.
-- **Processing Pipeline:** Enriches and formats events (currently JSON output, with a graph engine in development).
+* **eBPF-Powered Telemetry:** Intercepts kernel events dynamically using low-overhead tracepoints (`execve`, `connect`, `dup2`, `mmap`, `mprotect`, `ptrace`, and `sched_process_exit`).
+* **Process Exit & Pruning:** Tracks live process termination. Exited processes are preserved visually as `[exited]` if active child branches exist, and cascade-pruned from memory once the entire subtree terminates.
+* **Dynamic Rules Engine (`rules.json`):** Allows runtime configuration of threat signatures, severities, matching paths, and global PID/Comm whitelists without recompiling.
+* **Rich TUI Dashboard:** Features a multi-pane FTXUI-based interactive interface with color-coded severity levels (Red for CRITICAL, Salmon for HIGH, Yellow for MEDIUM, Cyan for LOW) and real-time process details.
+* **Forensic persistence:** Records event timelines into SQLite databases using performance-optimized WAL (Write-Ahead Logging) mode, enabling offline replaying and forensic analysis.
 
-## Installation
+---
+
+## 🛠️ Project Architecture
+
+```
+Kernel Space (eBPF) ➔ Tracepoints Hooked ➔ Ring Buffer (rb)
+                                               │
+                                               ▼
+Userland Agent (C++20) ◄────────────── Poll Callback
+         │
+         ├─► Graph Engine ➔ Ancestry & Garbage Collection
+         ├─► Detection Engine ➔ JSON Rules & Whitelisting
+         ├─► Storage Engine ➔ SQLite WAL DB
+         └─► TUI Dashboard ➔ FTXUI Screen
+```
+
+---
+
+## 📥 Installation
 
 ### Dependencies
-Rift requires modern Linux features and development tools.
+Rift requires modern Linux kernels and standard build libraries:
 ```bash
-sudo apt-get install build-essential cmake clang llvm libbpf-dev linux-headers-$(uname -r) libspdlog-dev libfmt-dev libsqlite3-dev nlohmann-json3-dev pkg-config
+sudo apt-get update
+sudo apt-get install -y build-essential cmake clang llvm libbpf-dev linux-headers-$(uname -r) libspdlog-dev libfmt-dev libsqlite3-dev nlohmann-json3-dev pkg-config
 ```
+*(Alternatively, execute the packaged setup helper script: `sudo bash scripts/install_deps.sh`)*
 
 ### Build
 ```bash
-mkdir build && cd build
+mkdir -p build && cd build
 cmake ..
 make -j$(nproc)
 ```
 
-## Usage
-Run Rift as root to start telemetry collection. By default, it launches an interactive TUI.
+---
 
-```bash
-# Live monitoring (TUI)
-sudo ./rift
+## ⚙️ Configuration (`rules.json`)
+Rift dynamically loads its rule engine and bypass profiles from `rules.json` in the current execution folder:
 
-# Record a session to a database (TUI)
-sudo ./rift record session.db
-
-# Replay a captured session (TUI)
-./rift replay session.db
-
-# Headless mode (for automation/verification)
-sudo ./rift --no-tui record session.db
-./rift --no-tui replay session.db
+```json
+{
+  "rules": [
+    {
+      "name": "SUSPICIOUS_TOOL",
+      "severity": "LOW",
+      "match_paths": ["ncat", "/nc"],
+      "enabled": true
+    },
+    {
+      "name": "REVERSE_SHELL",
+      "severity": "CRITICAL",
+      "spawn_shells": ["/sh", "/bash"],
+      "enabled": true
+    }
+  ],
+  "whitelist": {
+    "pids": [1],
+    "comms": ["systemd"]
+  }
+}
 ```
 
-## Roadmap
-- [x] **Phase 1:** Telemetry Foundation (eBPF, JSON output, structured logs)
-- [x] **Phase 2:** Graph Engine (Process relationship tracking, ancestry graphing)
-- [x] **Phase 3:** Real-time TUI (Interactive terminal UI for threat monitoring)
-- [x] **Phase 4:** Detection Engine (Behavioral correlation, attack signatures)
-- [x] **Phase 5:** Storage & Replay (SQLite persistence, session recording)
-- [x] **Phase 6:** Container Awareness (Docker/K8s correlation)
-- [x] **Phase 7:** Advanced Memory Detection (RWX, unbacked execution)
+---
 
-## License
+## 💻 Usage
+
+Run Rift as root to attach the eBPF kernel hooks.
+
+```bash
+# Live monitoring (TUI Mode)
+sudo ./build/rift
+
+# Record a session to SQLite database
+sudo ./build/rift record session.db
+
+# Replay a captured database session offline
+./build/rift replay session.db
+
+# Headless mode (CLI output, suited for automation / SIEM pipelines)
+sudo ./build/rift --no-tui record session.db
+./build/rift --no-tui replay session.db
+```
+
+---
+
+## 🧪 Simulating Threats
+Use the provided script to generate threat indicators (triggers suspicious memory mmap, Netcat tool calls, and reverse shell simulations):
+```bash
+python3 scripts/trigger_threats.py
+```
+
+---
+
+## 📄 License
 MIT License
